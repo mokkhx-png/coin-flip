@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>เครื่องมือช่วยตัดสินใจ</title>
+  <style>
+    * { 
+      box-sizing: border-box; 
+      -webkit-tap-highlight-color: transparent; 
+    }
+    
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+      background-color: #0f172a;
+      color: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 20px;
+      overscroll-behavior-y: contain; 
+    }
+
+    .options-container {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: 100%;
+      max-width: 400px;
+      margin-top: 10px;
+    }
+
+    .option-card {
+      background: #1e293b;
+      border: 2px solid #334155;
+      border-radius: 12px;
+      padding: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transition: all 0.4s ease;
+    }
+
+    .option-card label {
+      font-weight: bold;
+      font-size: 16px;
+      white-space: nowrap;
+      color: #94a3b8;
+    }
+
+    .option-card input {
+      width: 100%;
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid #475569;
+      background: #0f172a;
+      color: #fff;
+      font-size: 16px;
+      outline: none;
+    }
+
+    .option-card.winner {
+      border-color: #22c55e;
+      background: #14532d;
+      box-shadow: 0 0 20px rgba(34, 197, 94, 0.5);
+      transform: scale(1.02);
+    }
+    .option-card.winner label { color: #4ade80; }
+    .option-card.dimmed { opacity: 0.35; }
+
+    .coin-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+      perspective: 1000px;
+    }
+
+    .coin {
+      width: 160px;
+      height: 160px;
+      position: relative;
+      transform-style: preserve-3d;
+      transition: transform 2.5s cubic-bezier(0.15, 0.85, 0.35, 1.2);
+    }
+
+    .side {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      backface-visibility: hidden;
+      background-size: cover;
+      background-position: center;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+    }
+
+    .heads {
+      background-image: url('heads.png');
+    }
+
+    .tails {
+      background-image: url('tails.png');
+      transform: rotateX(180deg);
+    }
+
+    .instruction {
+      margin-top: 30px;
+      color: #64748b;
+      font-size: 14px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body onclick="flipCoin()">
+
+  <div class="options-container">
+    <div class="option-card" id="cardHeads">
+      <label>🐘 หัว:</label>
+      <input type="text" id="inputHeads" value="ทำทันที" placeholder="พิมพ์ทางเลือกที่ 1" onclick="event.stopPropagation()">
+    </div>
+    
+    <div class="option-card" id="cardTails">
+      <label>💡 ก้อย:</label>
+      <input type="text" id="inputTails" value="ไว้ทีหลัง" placeholder="พิมพ์ทางเลือกที่ 2" onclick="event.stopPropagation()">
+    </div>
+  </div>
+
+  <div class="coin-area">
+    <div class="coin" id="coin">
+      <div class="side heads"></div>
+      <div class="side tails"></div>
+    </div>
+    <p class="instruction" id="statusText">👆 แตะที่ใดก็ได้เพื่อหมุนลุ้นผล</p>
+  </div>
+
+  <script>
+    let isFlipping = false;
+    let currentRotation = 0;
+
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    let audioCtx;
+
+    function initAudio() {
+      if (!audioCtx) audioCtx = new AudioContext();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    }
+
+    function playSpinSound(durationMs) {
+      initAudio();
+      const startTime = audioCtx.currentTime;
+      const totalTicks = 18;
+      
+      for (let i = 0; i < totalTicks; i++) {
+        const timeOffset = Math.pow(i / totalTicks, 1.5) * (durationMs / 1000);
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(400 + (i * 20), startTime + timeOffset);
+        gain.gain.setValueAtTime(0.05, startTime + timeOffset);
+        gain.gain.exponentialRampToValueAtTime(0.001, startTime + timeOffset + 0.04);
+
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        osc.start(startTime + timeOffset);
+        osc.stop(startTime + timeOffset + 0.05);
+      }
+    }
+
+    function playWinSound() {
+      initAudio();
+      const now = audioCtx.currentTime;
+      const notes = [523.25, 783.99]; 
+      
+      notes.forEach((freq, index) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + (index * 0.12));
+        gain.gain.setValueAtTime(0.15, now + (index * 0.12));
+        gain.gain.exponentialRampToValueAtTime(0.001, now + (index * 0.12) + 0.4);
+
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        osc.start(now + (index * 0.12));
+        osc.stop(now + (index * 0.12) + 0.4);
+      });
+    }
+
+    function flipCoin() {
+      if (isFlipping) return;
+      isFlipping = true;
+
+      const coin = document.getElementById('coin');
+      const cardHeads = document.getElementById('cardHeads');
+      const cardTails = document.getElementById('cardTails');
+      const statusText = document.getElementById('statusText');
+
+      cardHeads.classList.remove('winner', 'dimmed');
+      cardTails.classList.remove('winner', 'dimmed');
+      statusText.textContent = "กำลังลุ้นผลลัพธ์...";
+
+      playSpinSound(2500);
+
+      const isHeads = Math.random() < 0.5;
+      const extraSpins = 10 * 360; 
+      const targetAngle = isHeads ? 0 : 180;
+      
+      currentRotation += extraSpins + (targetAngle - (currentRotation % 360));
+      coin.style.transform = `rotateX(${currentRotation}deg)`;
+
+      setTimeout(() => {
+        playWinSound();
+
+        if (isHeads) {
+          cardHeads.classList.add('winner');
+          cardTails.classList.add('dimmed');
+          statusText.textContent = "🎉 ออกฝั่งหัว (ช้าง)!";
+        } else {
+          cardTails.classList.add('winner');
+          cardHeads.classList.add('dimmed');
+          statusText.textContent = "🎉 ออกฝั่งก้อย (หลอดไฟ)!";
+        }
+        isFlipping = false;
+      }, 2500);
+    }
+  </script>
+</body>
+</html>
